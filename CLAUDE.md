@@ -10,7 +10,7 @@ Fast MCP server for Apple Mail using optimized JXA scripts with batch property f
 src/apple_mail_mcp/
 ├── __init__.py         # CLI entry point, exports main()
 ├── cli.py              # CLI commands (index, status, rebuild, serve)
-├── server.py           # FastMCP server with 5 MCP tools
+├── server.py           # FastMCP server with 6 MCP tools
 ├── config.py           # Environment variable configuration
 ├── builders.py         # QueryBuilder, AccountsQueryBuilder
 ├── executor.py         # run_jxa(), execute_with_core(), execute_query()
@@ -87,7 +87,7 @@ Startup Sync Flow:
 ### Layer Separation
 
 1. **cli.py** - CLI entry point, commands for indexing
-2. **server.py** - 5 MCP tools, uses builders and index
+2. **server.py** - 6 MCP tools, uses builders and index
 3. **builders.py** - Constructs JXA scripts from Python, type-safe
 4. **executor.py** - Runs scripts via osascript, handles JSON parsing
 5. **index/** - FTS5 search index with disk-based sync

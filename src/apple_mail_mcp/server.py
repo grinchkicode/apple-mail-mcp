@@ -5,7 +5,7 @@ Provides MCP tools for interacting with Apple Mail via optimized JXA scripts.
 Uses batch property fetching for 87x faster performance.
 Includes FTS5 search index for 700-3500x faster body search.
 
-TOOLS (5 total):
+TOOLS (6 total):
 - list_accounts() - List email accounts
 - list_mailboxes(account?) - List mailboxes
 - get_emails(..., filter?) - Unified email listing with filters

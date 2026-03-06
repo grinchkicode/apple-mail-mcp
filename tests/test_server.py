@@ -1,6 +1,6 @@
 """Tests for MCP server tools.
 
-Tests the 5 MCP tools exposed by server.py:
+Tests the 6 MCP tools exposed by server.py:
 - list_accounts
 - list_mailboxes
 - get_emails
