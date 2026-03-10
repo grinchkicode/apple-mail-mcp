@@ -329,9 +329,23 @@ def parse_emlx(path: Path) -> EmlxEmail | None:
             except (UnicodeDecodeError, LookupError):
                 pass
 
-        # Extract date and convert from RFC 2822 to ISO 8601
+        # Extract received date from Received header (delivery time)
+        # Falls back to Date header if no Received header exists
         date_received = ""
-        if msg["Date"]:
+        received_header = msg["Received"]
+        if received_header:
+            try:
+                from email.utils import parsedate_to_datetime
+
+                # RFC 5322: Received header ends with "; <date>"
+                semicolon_idx = received_header.rfind(";")
+                if semicolon_idx != -1:
+                    date_part = received_header[semicolon_idx + 1 :].strip()
+                    dt = parsedate_to_datetime(date_part)
+                    date_received = dt.isoformat()
+            except (ValueError, TypeError):
+                pass
+        if not date_received and msg["Date"]:
             try:
                 from email.utils import parsedate_to_datetime
 
@@ -349,7 +363,7 @@ def parse_emlx(path: Path) -> EmlxEmail | None:
         # Extract message ID from filename (handles .partial.emlx)
         msg_id = extract_message_id(path)
 
-        # Extract MIME headers for extended fields
+        # Extract sent date from Date header (composition time)
         date_sent = ""
         if msg["Date"]:
             try:
