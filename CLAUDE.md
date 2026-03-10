@@ -126,9 +126,26 @@ Server startup → IndexManager.sync_updates()
 
 | Access Method | Use Case | Latency | When Used |
 |---------------|----------|---------|-----------|
-| **JXA (Live)** | Real-time ops, small queries | ~100-300ms | `get_email()`, `list_mailboxes()` |
+| **Disk (Single)** | Read single email by ID | ~1-5ms | `get_email()` Strategy 0 |
+| **JXA (Live)** | Real-time ops, small queries | ~100-300ms | `get_email()` Strategies 1-3, `list_mailboxes()` |
 | **FTS5 (Cached)** | Body search, complex filtering | ~2-10ms | `search()` |
 | **Disk (Batch)** | Indexing, sync | ~15ms/100 emails | startup, `apple-mail-mcp index` |
+
+### get_email() Strategy Cascade
+
+```
+Strategy 0: Disk read (.emlx)     ← fastest, requires index
+    ↓ fail
+Strategy 1: JXA specified mailbox ← uses account + mailbox params
+    ↓ fail
+Strategy 2: Index lookup + JXA   ← finds mailbox via SQLite, then JXA
+    ↓ fail
+Strategy 3: Iterate all mailboxes ← slowest, always works (with timeout)
+```
+
+All strategies return identical response schema. Strategy 0 extracts read/flagged
+from plist footer flags bitmask (bit 0 = read, bit 4 = flagged) and date_sent,
+reply_to, message_id from MIME headers.
 
 ### Design Patterns
 

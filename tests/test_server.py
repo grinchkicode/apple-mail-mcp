@@ -298,6 +298,47 @@ class TestGetEmail:
         mock_exec.assert_not_called()
 
     @pytest.mark.asyncio
+    @patch("apple_mail_mcp.server._get_account_map")
+    @patch("apple_mail_mcp.server._get_index_manager")
+    @patch("apple_mail_mcp.server.execute_with_core_async")
+    async def test_strategy0_falls_through_on_failure(
+        self, mock_exec, mock_mgr, mock_acct_map
+    ):
+        """Strategy 0 failure falls through to JXA strategies."""
+        from unittest.mock import AsyncMock
+
+        # Strategy 0: index exists but find_email_path returns None
+        mock_mgr.return_value.has_index.return_value = True
+        mock_mgr.return_value.find_email_path.return_value = None
+        mock_mgr.return_value.get_email_attachments.return_value = []
+
+        acct_map = mock_acct_map.return_value
+        acct_map.ensure_loaded = AsyncMock()
+        acct_map.name_to_uuid.return_value = None
+
+        # Strategy 1 (JXA) should be called as fallback
+        mock_exec.return_value = {
+            "id": 42,
+            "subject": "From JXA",
+            "sender": "a@b.com",
+            "content": "Body",
+            "date_received": "2024-01-01",
+            "date_sent": "2024-01-01",
+            "read": True,
+            "flagged": False,
+            "reply_to": "",
+            "message_id": "<x>",
+            "attachments": [],
+        }
+
+        from apple_mail_mcp.server import get_email
+
+        result = await get_email(42, account="Work", mailbox="INBOX")
+
+        assert result["subject"] == "From JXA"
+        mock_exec.assert_called()
+
+    @pytest.mark.asyncio
     async def test_get_email_uses_index_for_fallback(self):
         """B1: Strategy 2 uses index lookup when strategy 1 fails."""
         call_count = 0
