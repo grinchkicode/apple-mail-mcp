@@ -6,13 +6,14 @@ Apple Mail MCP Server
 2. FTS5 search — full-text body search in ~2ms with BM25 ranking
 3. JXA fallback — batch property fetching for multi-email ops (87x faster)
 
-TOOLS (6 total):
+TOOLS (7 total):
 - list_accounts() - List email accounts
 - list_mailboxes(account?) - List mailboxes
 - get_emails(..., filter?) - Unified email listing with filters
 - get_email(id) - Get single email with content (disk-first)
 - search(query, ...) - Unified search with FTS5 support
 - get_attachment(id, filename?) - Extract attachment or links
+- send_email(to, subject, body, ...) - Send an email
 """
 
 from __future__ import annotations
@@ -851,6 +852,131 @@ async def search(
             for e in emails
         ]
     )
+
+
+class SendEmailResult(TypedDict):
+    """Result of sending an email."""
+
+    success: bool
+    message: str
+
+
+@mcp.tool
+async def send_email(
+    to: list[str],
+    subject: str,
+    body: str,
+    cc: list[str] | None = None,
+    bcc: list[str] | None = None,
+    account: str | None = None,
+    send_now: bool = True,
+) -> SendEmailResult:
+    """
+    Send an email via Apple Mail.
+
+    Creates and sends an email using the specified account.
+    If send_now is False, the email is saved as a draft.
+
+    Args:
+        to: List of recipient email addresses (required)
+        subject: Email subject line
+        body: Email body content (plain text)
+        cc: List of CC recipients (optional)
+        bcc: List of BCC recipients (optional)
+        account: Account name to send from. Uses APPLE_MAIL_DEFAULT_ACCOUNT
+                 env var or first account if not specified.
+        send_now: If True (default), send immediately.
+                  If False, save as draft for review.
+
+    Returns:
+        Dictionary with 'success' boolean and 'message' string.
+
+    Examples:
+        >>> send_email(["john@example.com"], "Hello", "Hi John!")
+        {"success": True, "message": "Email sent successfully"}
+
+        >>> send_email(
+        ...     to=["team@example.com"],
+        ...     subject="Meeting notes",
+        ...     body="Here are the notes...",
+        ...     cc=["manager@example.com"],
+        ...     send_now=False
+        ... )
+        {"success": True, "message": "Email saved as draft"}
+    """
+    if not to:
+        return {"success": False, "message": "At least one recipient is required"}
+
+    resolved_account = _resolve_account(account)
+
+    # Build recipient arrays as JSON for safe injection
+    to_json = json.dumps(to)
+    cc_json = json.dumps(cc or [])
+    bcc_json = json.dumps(bcc or [])
+    subject_json = json.dumps(subject)
+    body_json = json.dumps(body)
+    send_now_js = "true" if send_now else "false"
+
+    # Build account selection
+    if resolved_account:
+        account_js = f"Mail.accounts.byName({json.dumps(resolved_account)})"
+    else:
+        account_js = "Mail.accounts[0]"
+
+    script = f"""
+const Mail = Application('Mail');
+Mail.includeStandardAdditions = true;
+
+const account = {account_js};
+const toRecipients = {to_json};
+const ccRecipients = {cc_json};
+const bccRecipients = {bcc_json};
+const emailSubject = {subject_json};
+const emailBody = {body_json};
+const shouldSend = {send_now_js};
+
+// Create the outgoing message
+const msg = Mail.OutgoingMessage({{
+    subject: emailSubject,
+    content: emailBody,
+    sender: account.emailAddresses()[0],
+    visible: !shouldSend
+}});
+
+Mail.outgoingMessages.push(msg);
+
+// Add TO recipients
+for (const addr of toRecipients) {{
+    msg.toRecipients.push(Mail.Recipient({{address: addr}}));
+}}
+
+// Add CC recipients
+for (const addr of ccRecipients) {{
+    msg.ccRecipients.push(Mail.Recipient({{address: addr}}));
+}}
+
+// Add BCC recipients
+for (const addr of bccRecipients) {{
+    msg.bccRecipients.push(Mail.Recipient({{address: addr}}));
+}}
+
+// Send or keep as draft
+if (shouldSend) {{
+    msg.send();
+    JSON.stringify({{success: true, message: "Email sent successfully"}});
+}} else {{
+    JSON.stringify({{success: true, message: "Email saved as draft"}});
+}}
+"""
+
+    try:
+        from .executor import run_jxa_async
+
+        result = await run_jxa_async(script, timeout=30)
+        return json.loads(result)
+    except Exception as e:
+        logger.error(f"Failed to send email: {e}")
+        return {"success": False, "message": f"Failed to send email: {str(e)}"}
 
 
 if __name__ == "__main__":
